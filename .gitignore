@@ -1,3 +1,6 @@
+# Ignore my local copy of the HersheyFonts library:
+HersheyFonts.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
