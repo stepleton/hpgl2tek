@@ -52,6 +52,12 @@ instead.) Some ZIP files have animations with more frames than that, so this
 file breaks those down into separate zip files that have been renumbered,
 counting up from 1. No ZIP file will have more than 226 files inside of it.
 
+### [slidesho](slidesho/README.md)
+
+Utilities for displaying a slideshow of vector graphics files on a Tektronix
+4010-series terminal (including the 4006-1) attached to certain configurations
+of the [RC2014](https://rc2014.co.uk/) kit computer.
+
 
 Demo
 ----
