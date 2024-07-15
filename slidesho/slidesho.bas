@@ -10,9 +10,9 @@ REM attached (via a TTL to RS-232 voltage level shifter) to the second (Port B)
 REM serial port. Other hardware configurations may work but haven't been tested.
 REM
 REM (Hardcoded serial port parameters: 4600 BPS, 7 bits, even parity, 2 stop
-REM bits; note that on your REM RC2014 Zed Pro, you will need to set the Clock
-REM 2 jumper on your Dual Clock Module to the 0.3072 position and **remove**
-REM the Port B Clock jumper on the SIO/2 Dual Serial Module.)
+REM bits; note that on your RC2014 Zed Pro, you will need to set the Clock 2
+REM jumper on your Dual Clock Module to the 0.3072 position and **remove** the
+REM Port B Clock jumper on the SIO/2 Dual Serial Module.)
 REM
 REM This program contains inline Z80 assembly code that talks directly to the
 REM Z80 SIO/2 chip, so porting it to a different platform or a different BASIC
@@ -54,8 +54,9 @@ REM
 REM Dependencies
 REM ------------
 REM
-REM This program has been tested with versions 3.00 and 5.00 of R. T. Russell's
-REM generic BBC BASIC for Z80 systems. Tested hardware is described above.
+REM This program has been tested with version 5.00 of R. T. Russell's generic
+REM BBC BASIC for Z80 systems. Tested hardware is described above. This program
+REM will not work with earlier versions of BBC BASIC.
 REM
 REM Revision history
 REM ----------------
@@ -136,40 +137,63 @@ REM  200   DEFB &68 ; Wr5 Transmit enable, 8 bit
   650 DEF FN_serget : =USR(serget)
   660 :
 
-  670 REM ###### MAIN PROGRAM ######
-  680 REM ### Load the slide catalogue ###
-  690 fh=OPENIN "CATALOG.DAT"
-  700 nUM_FILES%=0
-  710 REPEAT : REM Count number of entries in the slide catalogue
-  720   INPUT#fh,filename$,size$,description$
-  730   nUM_FILES%=nUM_FILES%+1
-  740 UNTIL filename$="__END__" OR EOF#fh
-  750 nUM_FILES%=nUM_FILES%-1 : REM delimiting data files is hard
-  760 IF nUM_FILES% <= 0 THEN PRINT "No slides to show, giving up" : END
-  770 DIM fILENAMES$(nUM_FILES%) : REM Allocate memory for catalogue data
-  780 DIM sIZES%(nUM_FILES%)
-  790 DIM dESCRIPTIONS$(nUM_FILES%)
-  800 PTR#fh=0 : REM Rewind to catalogue start and load data
-  810 FOR i% = 1 TO nUM_FILES%
-  820   INPUT#fh,fILENAMES$(i%),size$,dESCRIPTIONS$(i%)
-  830   sIZES%(i%)=VAL(size$)
-  840 NEXT i%
-  850 CLOSE#fh
+  670 REM ### Write B% bytes from address %H%L to the serial port ###
+  680 DIM serputs 40
+  690 P%=serputs
+  700 [
+  720 OPT 2
+  730 .outer       ; Top of outer loop
+  740 ld d,(hl)    ; Copy next byte to emit from the serial port to d
+  750 inc hl       ; Point hl at the byte to send after the one in d
+  760 .inner       ; Top of inner loop
+  770 in a,(&82)   ; Get serial port 2 status
+  780 bit 2,a      ; Are we done sending the previous byte?
+  790 jr z,inner   ; Not yet, loop again
+  800 ld a,d       ; Move the byte to send from d to a
+  810 out (&83),a  ; Send the byte in a out of the serial port
+  820 djnz outer   ; Loop to send the the next byte if one is left
+  830 ret
+  840 ]
+  850 DEF PROC_serputs(b%,s%): B%=s% : L%=b%:H%=b% >> 8 : CALL serputs : ENDPROC
   860 :
-  870 REM ### More initialisation ###
-  880 CALL serinit : REM Initialise serial port
-  890 cURSOR%=1 : REM Index of the first catalogue entry shown on screen
-  900 :
-  910 REM ### Main loop! ###
-  920 REPEAT
-  930   PROC_showmenu
-  940   choice%=FN_getchoice(3 + FN_min(29, nUM_FILES% - cURSOR% + 1))
-  950   IF choice%=0 THEN PROC_slideshow : REM Play slideshow
-  960   IF choice%=1 THEN cURSOR%=FN_max(1, cURSOR%-29) : REM Previous page
-  970   IF choice%=2 THEN cURSOR%=FN_min(nUM_FILES%, cURSOR%+29) : REM Next page
-  980   IF choice%>2 THEN PROC_oneslide(cURSOR%+choice%-3) : REM Slide choice
-  990 UNTIL FALSE
- 1000 :
+
+ 1000 REM ###### MAIN PROGRAM ######
+ 1010 REM ### Load the slide catalogue ###
+ 1020 fh=OPENIN "CATALOG.DAT"
+ 1030 nUM_FILES%=0
+ 1040 REPEAT : REM Count number of entries in the slide catalogue
+ 1050   INPUT#fh,filename$,size$,description$
+ 1060   nUM_FILES%=nUM_FILES%+1
+ 1070 UNTIL filename$="__END__" OR EOF#fh
+ 1080 nUM_FILES%=nUM_FILES%-1 : REM delimiting data files is hard
+ 1090 IF nUM_FILES% <= 0 THEN PRINT "No slides to show, giving up" : END
+ 1100 DIM fILENAMES$(nUM_FILES%) : REM Allocate memory for catalogue data
+ 1110 DIM sIZES%(nUM_FILES%)
+ 1120 DIM dESCRIPTIONS$(nUM_FILES%)
+ 1130 PTR#fh=0 : REM Rewind to catalogue start and load data
+ 1140 FOR i% = 1 TO nUM_FILES%
+ 1150   INPUT#fh,fILENAMES$(i%),size$,dESCRIPTIONS$(i%)
+ 1160   sIZES%(i%)=VAL(size$)
+ 1170 NEXT i%
+ 1180 CLOSE#fh
+ 1190 :
+ 1200 REM ### More initialisation ###
+ 1210 CALL serinit : REM Initialise serial port
+ 1220 cURSOR%=1 : REM Index of the first catalogue entry shown on screen
+ 1230 DIM bUF% 256 : REM 255 character buffer plus room for a terminator
+ 1240 :
+ 1250 REM ### Main loop! ###
+ 1260 REPEAT
+ 1270   PROC_showmenu
+ 1280   choice%=FN_getchoice(3 + FN_min(29, nUM_FILES% - cURSOR% + 1))
+ 1290   CASE choice% OF
+ 1300     WHEN 0 : PROC_slideshow : REM Play slideshow
+ 1310     WHEN 1 : cURSOR%=FN_max(1, cURSOR%-29) : REM Previous page 
+ 1320     WHEN 2 : cURSOR%=FN_min(nUM_FILES%, cURSOR%+29) : REM Next page
+ 1330     OTHERWISE : PROC_oneslide(cURSOR%+choice%-3) : REM Slide choice
+ 1340   ENDCASE
+ 1350 UNTIL FALSE
+ 1360 :
 
  4080 END : REM ###### LONG FUNCTION AND PROCEDURE DEFINITIONS ######
  4090 :
@@ -185,10 +209,11 @@ REM  200   DEFB &68 ; Wr5 Transmit enable, 8 bit
 
  6000 REM ### Write a nonempty string to the terminal screen ###
  6010 DEF PROC_write(s$)
- 6020 LOCAL i%
- 6030 FOR i% = 1 TO LEN(s$) : PROC_serput(ASC(MID$(s$,i%,1))) : NEXT i%
- 6040 ENDPROC
- 6050 :
+ 6020 LOCAL p% : REM p%=pointer to s$'s variable record, whose contents are:
+ 6030 p%=^s$ : REM [len, maxlen, data address LSByte, data address MSByte]
+ 6040 B%=?p% : L%=p%?2 : H%=p%?3 : CALL serputs
+ 6050 ENDPROC
+ 6060 :
 
  7000 REM ### Write nonempty string to the terminal screen followed by CR/LF ###
  7010 DEF PROC_writeln(s$)
@@ -204,34 +229,35 @@ REM  200   DEFB &68 ; Wr5 Transmit enable, 8 bit
  8030 REPEAT : c%=FN__getchoice_inner : UNTIL c%<max%
  8040 =c%
  8050 DEF FN__getchoice_inner
- 8060 LOCAL i%,c%,choice%
- 8070 i%=0
+ 8060 LOCAL i%,c%,k%,choice%
+ 8070 i%=0 : k%=&FEFF
  8080 REPEAT
  8090   choice%=-1
- 8100   REPEAT
- 8110     c%=FN_serget
- 8120     i%=i%+1
- 8130     IF i%>=10000 THEN c%=&30 : REM Timeout: as if the user pressed '0'
- 8140   UNTIL c%<>0
- 8150   IF c%>=&30 AND c%<=&39 THEN choice%=c%-&30 : REM 0..9
- 8160   IF c%>=&41 AND c%<=&5A THEN choice%=c%-&37 : REM 10..35 (uppercase)
- 8170   IF c%>=&61 AND c%<=&7A THEN choice%=c%-&57 : REM 10..35 (lowercase)
- 8180 UNTIL choice%>=0
- 8190 =choice%
- 8200 :
+ 8100   REPEAT : REM Line below cycles blinkenlights while awaiting input
+ 8110     IF i% MOD 8==0 THEN k%=k%>>1 : PUT 0,k% : IF k% MOD 2==0 THEN k%=&FEFF
+ 8120     c%=FN_serget
+ 8130     i%+=1
+ 8140     IF i%>=8352 THEN c%=&30 : REM Timeout: as if the user pressed '0'
+ 8150   UNTIL c%<>0
+ 8160   IF c%>=&30 AND c%<=&39 THEN choice%=c%-&30 : REM 0..9
+ 8170   IF c%>=&41 AND c%<=&5A THEN choice%=c%-&37 : REM 10..35 (uppercase)
+ 8180   IF c%>=&61 AND c%<=&7A THEN choice%=c%-&57 : REM 10..35 (lowercase)
+ 8190 UNTIL choice%>=0
+ 8200 =choice%
+ 8210 :
 
  9000 REM ### Dump i'th catalogue file to terminal; abort+return on keypress ###
  9010 DEF FN_show(filenum%) : REM Arg is 1-indexed
- 9020 LOCAL s%,i%,c%,fh
+ 9020 LOCAL s%,i%,c%,k%,fh
  9030 PROC_page
  9040 fh=OPENIN fILENAMES$(filenum%)
  9050 s%=sIZES%(filenum%)
  9060 REPEAT
- 9070   PUT 0,s% DIV 64
- 9080   IF s%>=64 THEN PROC_sercopy64(fh) : s%=s%-64
- 9090   IF s%<64 THEN FOR i%=1 TO s% : c%=BGET#fh : PROC_serput(c%) : NEXT i%
+ 9070   k%=s% >> 8
+ 9080   IF s%>=255 THEN PROC_sercopy(fh,255,k%) : s%=s%-255
+ 9090   IF s%<255 THEN PROC_sercopy(fh,s%,k%)
  9100   c%=FN_serget
- 9110 UNTIL s%<64 OR c%<>0
+ 9110 UNTIL s%<255 OR c%<>0
  9120 CLOSE#fh
  9130 PROC_gotorc(0,0) : REM Returns us to alpha mode
  9140 =c%
@@ -243,9 +269,9 @@ REM  200   DEFB &68 ; Wr5 Transmit enable, 8 bit
 10030 x%=col%*1024/75 : REM Compute graphical X, Y coordinates
 10040 y%=767*(1-row%/34)
 10050 PROC_serput(&1D) : REM GS - enter graphics mode, moving not drawing
-10060 PROC_serput(32 + (y% DIV 32)) : REM Y coordinate high byte
+10060 PROC_serput(32 + (y% >> 5)) : REM Y coordinate high byte
 10070 PROC_serput(96 + (y% MOD 32)) : REM Y coordinate high byte
-10080 PROC_serput(32 + (x% DIV 32)) : REM X coordinate high byte
+10080 PROC_serput(32 + (x% >> 5)) : REM X coordinate high byte
 10090 PROC_serput(64 + (x% MOD 32)) : REM X coordinate high byte
 10100 PROC_serput(&1F) : REM US - return to alpha mode
 10110 ENDPROC
@@ -316,38 +342,10 @@ REM  200   DEFB &68 ; Wr5 Transmit enable, 8 bit
 15100 ENDPROC
 15110 :
 
-16000 REM ### Unrolled loop copying 64 filehandle characters to the screen ###
-16010 DEF PROC_sercopy64(fh)
-16020 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16030 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16040 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16050 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16060 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16070 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16080 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16090 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16100 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16110 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16120 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16130 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16140 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16150 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16160 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16170 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16180 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16190 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16200 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16210 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16220 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16230 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16240 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16250 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16260 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16270 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16280 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16290 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16300 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16310 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16320 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16330 B%=BGET#fh : CALL serput : B%=BGET#fh : CALL serput
-16340 ENDPROC
+16000 REM ### Copy n%<256 file chars to SIO port 2; k% to blinkenlights ###
+16010 DEF PROC_sercopy(fh,n%,k%)
+16020 $bUF%=GET$#fh BY n% : REM Load data from the filehandle
+16030 PUT 0,k%
+16040 B%=n% : L%=bUF% : H%=bUF% >> 8 : CALL serputs
+16050 ENDPROC
+16060 :
