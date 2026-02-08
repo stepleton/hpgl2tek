@@ -1,3 +1,8 @@
+NO LONGER UPDATED HERE
+======================
+This code is no longer updated on github. For the most recent version of this
+repository, visit https://codeberg.org/stepleton/hpgl2tek
+
 hpgl2tek: For making graphics and animations on Tektronix storage tube systems
 ==============================================================================
 
